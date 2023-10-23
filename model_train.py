@@ -25,5 +25,3 @@ class FormData(BaseModel):
     kick_on_chair: Optional[int] = None
     spreading_thigh: Optional[int] = None
 
-    class Config:
-        orm_mode = True

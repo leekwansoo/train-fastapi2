@@ -27,7 +27,7 @@
           {% for train in data %}
           <tr class="table__row">
               {% for cell in train %}
-              <td class="table__cell">{{cell}}</td>
+              <td class="table__cell">{{cell[1]}}</td>
               {% endfor %}
               <td><button id = delete onclick= "popwindow(id)" >DEL</button></td>
           </tr>

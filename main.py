@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, Request, Form, File, Body
+from fastapi import FastAPI, HTTPException, UploadFile, Request, Form, File, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -9,6 +9,7 @@ from database_todo import *
 from database_login import *
 from database_train import *
 import json
+from fastapi.encoders import jsonable_encoder
 
 origins = ["*"] 
 # This will eventually be changed to only the origins you will use once it's deployed, to secure the app a bit more.
@@ -23,6 +24,11 @@ templates = Jinja2Templates(directory="templates")
 # convert list into tuple
 def convert_list_tuple(list):
     return tuple(list)
+
+def wrap_data(data):
+    out_data = []
+    out_data.append(data)
+    return (out_data)
 
 # convert json to list
 def convert_json_list(file_name):
@@ -65,12 +71,35 @@ async def get_train_data_byid(train: Train):
     if not train: raise HTTPException(400)
     return train
 
-@app.post('/train', response_model=FormData)
-async def add_train_data(form_data: FormData = Body(...)):
-    print(form_data)
-    result = await create_train(form_data)
+@app.post('/train')
+async def add_train_data(
+    date: str = Form(...),
+    user: str = Form(...),
+    pushup: int = Form(...),
+    stomach: int = Form(...),
+    squat: int = Form(...),
+    arm: int = Form(...),
+    uplift: int = Form(...),
+    upheel: int = Form(...),
+    kick_on_chair: int = Form(...),
+    spreading_thigh: int = Form(...)
+   ):
+    data = {
+        "date": date,
+        "user": user,
+        "pushup": pushup,
+        "stomach": stomach,
+        "squat": squat,
+        "arm": arm,
+        "uplift": uplift,
+        "upheel": upheel,
+        "kick_on_chair":kick_on_chair,
+        "spreading_thigh": spreading_thigh
+    }  
+
+    result = await create_train(data)
     print(result)
-    if not result: raise HTTPException(400)
+    #if not result: raise HTTPException(400)
     return result
 
 @app.delete("/train/{id}")

@@ -1,3 +1,4 @@
+from fastapi import FastAPI, HTTPException
 from pymongo import MongoClient
 #
 from bson import ObjectId
@@ -33,9 +34,9 @@ async def fetch_one_train(id):
     return doc
 
 async def create_train(train):
-    doc = train.dict()
-    print(doc)
+    doc = dict(train)
     result = await collection.insert_one(doc)
+    if not result: raise HTTPException(400)
     return result
 
 async def change_train(train):

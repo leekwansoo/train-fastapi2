@@ -1,15 +1,33 @@
+import uvicorn
 from fastapi import FastAPI, HTTPException, UploadFile, Request, Form, File, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Response
+
+from pymongo import MongoClient
+from bson import ObjectId
+import motor.motor_asyncio
+from dotenv import dotenv_values
+
+from models.model_login import *
+from models.model_train import *
 from typing import Annotated, List
-import uvicorn
-from database_todo import *
-from database_login import *
-from database_train import *
+from database import *
+
 import json
-from fastapi.encoders import jsonable_encoder
+import os
+
+config = dotenv_values(".env")
+DATABASE_URI = config.get("DATABASE_URI")
+if os.getenv("DATABASE_URI"): 
+    DATABASE_URI = os.getenv("DATABASE_URI") #ensures that if we have a system environment variable, it uses that instead
+
+client = motor.motor_asyncio.AsyncIOMotorClient(DATABASE_URI)
+
+database = client.todoapp
+user_collection = database.logins
+train_collection = database.trains
 
 origins = ["*"] 
 # This will eventually be changed to only the origins you will use once it's deployed, to secure the app a bit more.
@@ -41,7 +59,7 @@ def convert_json_list(file_name):
     return (result_list)
 
 # Daily Train Table
-headings = ("User", "Date", "푸쉬업", "배운동","벽스퀏", "팔운동","상체들기","뒤꿈치들기","의자발차기","무릎벌리기","Actions")
+headings = ("Date","User","푸쉬업", "배운동","벽스퀏", "팔운동","상체들기","뒤꿈치들기","의자발차기","무릎벌리기", "id", "Actions")
 data = () 
 
 
@@ -59,17 +77,37 @@ def root(request: Request):
 
 @app.get('/train')
 async def get_train_data(request: Request):
-    results = await fetch_all_trains()
-    print(results)
-   
-    if not results: return{"msg":"no records found"}
-    return templates.TemplateResponse("traintable.html", {"request": request, "headings": headings, "data": results}) 
+    #results = await fetch_all_trains()
+    trains = []   
+    cursor = train_collection.find({})
+    async for doc in cursor:
+        id = str(doc['_id']) #abstract _id from ObjectID and add id into doc
+        #print(id)
+        doc.update({'id':id})
+        #print(doc)
+        train = Train(**doc)
+        #train.update({'id':id})
+        trains.append(train)
+        print(trains)
+    if not trains: return{"msg":"no records found"}
+    return templates.TemplateResponse("traintable.html", {"request": request, "headings": headings, "data": trains}) 
 
-@app.get('/train/{id}',response_model=Train)
-async def get_train_data_byid(train: Train):
-    train = await fetch_one_train(id)
-    if not train: raise HTTPException(400)
-    return train
+@app.get('/train/{user}')
+async def get_train_data_byid(user: str, request: Request):
+    trains = []   
+    cursor = train_collection.find({'user':user})
+    async for doc in cursor:
+        id = str(doc['_id']) #abstract _id from ObjectID and add id into doc
+        #print(id)
+        doc.update({'id':id})
+        #print(doc)
+        train = Train(**doc)
+        #train.update({'id':id})
+        trains.append(train)
+        print(trains)
+    if not trains: return{"msg":"no records found"}
+    return templates.TemplateResponse("traintable.html", {"request": request, "headings": headings, "data": trains}) 
+   
 
 @app.post('/train')
 async def add_train_data(
@@ -96,29 +134,25 @@ async def add_train_data(
         "kick_on_chair":kick_on_chair,
         "spreading_thigh": spreading_thigh
     }  
-
-    result = await create_train(data)
-    print(result)
-    #if not result: raise HTTPException(400)
-    return result
-
-@app.delete("/train/{id}")
-async def delete_train_byid(id):
-    result = await delete_train(id)
+    print(data)
+    #result = await create_train(data)
+    doc = dict(data)
+    result = await train_collection.insert_one(doc)
     if not result: raise HTTPException(400)
-    return result
+    return {"data": "added"}
 
-@app.get("/uploadtrain")
+@app.delete("/deletetrain/{id}")
+async def delete_train_byid(id: str):
+    print(id)
+    #result = await delete_train(id: str)
+    result = await train_collection.delete_one({"_id": ObjectId(id)})
+    if not result: raise HTTPException(400)
+    return {"msg": 'data deleted'}
+
+@app.get("/upload")
 def root(request: Request):
     print("request received")
-    return templates.TemplateResponse("upload_train.html", {"request": request} )
-
-@app.post('/register', response_model=Login)
-async def user_register(id: Annotated[str, Form()], pw: Annotated[str, Form()]):
-    user = {"id": id, "pw": pw}
-    result = await create_user(user)
-    if not result: raise HTTPException(400)
-    return (user)
+    return templates.TemplateResponse("upload.html", {"request": request} )
 
 @app.get('/login')
 def login(request: Request):
@@ -127,10 +161,19 @@ def login(request: Request):
 @app.post('/login', response_model=Login)
 async def login_process(id: Annotated[str, Form()], pw: Annotated[str, Form()]):
     print(id, pw)
-    result = await find_user(id)
+    #result = await find_user(id)
+    result = await user_collection.find_one({"id": id})
     if not result: raise HTTPException(400)
-    if not result['pw'] == pw: raise HTTPException(400)
+    if not result['pw'] == pw: return {"msg": 'wrong password'}
     return (result)
+
+@app.post('/register', response_model=Login)
+async def user_register(id: Annotated[str, Form()], pw: Annotated[str, Form()]):
+    user = {"id": id, "pw": pw}
+    #result = await create_user(user)
+    result = await user_collection.insert_one(user)
+    if not result: return {"msg": 'register failed'}
+    return (user)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True) 
